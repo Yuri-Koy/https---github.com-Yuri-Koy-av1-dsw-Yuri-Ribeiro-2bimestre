@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import api from "../../services/api";
 
 export default function TaskFlow() {
   const [tarefas, setTarefas] = useState([]);
@@ -9,22 +10,20 @@ export default function TaskFlow() {
   const [editandoId, setEditandoId] = useState(null);
   const [textoEditando, setTextoEditando] = useState('');
 
-  // Aponta para a porta 3000 do seu Backend
-  const API_URL = 'http://localhost:3000/tarefas';
-
   // 1. LISTAR TAREFAS (GET)
   const carregarTarefas = async () => {
     try {
       setLoading(true);
-      const response = await fetch(API_URL);
-      if (!response.ok) throw new Error('Erro ao buscar dados do backend.');
-      const dados = await response.json();
-      
-      // Garante que o estado receba um array
-      setTarefas(Array.isArray(dados) ? dados : []);
       setError(null);
+      
+      // O Axios usa o caminho relativo baseado na baseURL configurada em services/api
+      const response = await api.get("/tasks");
+      
+      // No Axios, os dados vindos do backend ficam sempre em .data
+      setTarefas(Array.isArray(response.data) ? response.data : []);
     } catch (err) {
-      setError(err.message);
+      console.error(err);
+      setError(err.response?.data?.erro || 'Erro ao buscar dados do backend.');
     } finally {
       setLoading(false);
     }
@@ -40,40 +39,30 @@ export default function TaskFlow() {
     if (!novaTarefa.trim()) return;
 
     try {
-      const response = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          titulo: novaTarefa, // O controller vai traduzir isso para 'title'
-          descricao: ""
-        }),
+      // Enviando direto pelo Axios (ele já converte para JSON de forma automática)
+      await api.post("/tasks", {
+        title: novaTarefa,
+        descricao: ""
       });
 
-      if (!response.ok) throw new Error('Erro ao adicionar tarefa.');
-      
       setNovaTarefa('');
-      carregarTarefas(); // Atualiza a lista automaticamente
+      carregarTarefas(); // Recarrega a lista para trazer a nova tarefa do banco
     } catch (err) {
-      alert(err.message);
+      alert(err.response?.data?.erro || 'Erro ao adicionar tarefa.');
     }
   };
 
   // 3. ALTERAR STATUS (CONCLUÍDA / PENDENTE)
   const alternarConclusao = async (id, tituloAtual, statusAtual) => {
     try {
-      const response = await fetch(`${API_URL}/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          titulo: tituloAtual,
-          concluida: !statusAtual,
-        }),
+      await api.put(`/tasks/${id}`, {
+        title: tituloAtual,
+        completed: !statusAtual,
       });
-
-      if (!response.ok) throw new Error('Erro ao atualizar status.');
+      
       carregarTarefas();
     } catch (err) {
-      alert(err.message);
+      alert(err.response?.data?.erro || 'Erro ao atualizar status.');
     }
   };
 
@@ -82,14 +71,10 @@ export default function TaskFlow() {
     if (!confirm('Deseja realmente excluir esta tarefa?')) return;
 
     try {
-      const response = await fetch(`${API_URL}/${id}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) throw new Error('Erro ao excluir tarefa.');
+      await api.delete(`/tasks/${id}`);
       carregarTarefas();
     } catch (err) {
-      alert(err.message);
+      alert(err.response?.data?.erro || 'Erro ao excluir tarefa.');
     }
   };
 
@@ -98,22 +83,16 @@ export default function TaskFlow() {
     if (!textoEditando.trim()) return;
 
     try {
-      const response = await fetch(`${API_URL}/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          titulo: textoEditando,
-          concluida: statusAtual,
-        }),
+      await api.put(`/tasks/${id}`, {
+        title: textoEditando,
+        completed: statusAtual,
       });
-
-      if (!response.ok) throw new Error('Erro ao editar tarefa.');
       
       setEditandoId(null);
       setTextoEditando('');
       carregarTarefas();
     } catch (err) {
-      alert(err.message);
+      alert(err.response?.data?.erro || 'Erro ao editar tarefa.');
     }
   };
 
@@ -163,11 +142,10 @@ export default function TaskFlow() {
             {tarefas.map((tarefa) => (
               <li key={tarefa.id} className="flex items-center justify-between bg-slate-900 p-3 rounded-lg border border-slate-800 hover:border-slate-700 transition-colors group">
                 <div className="flex items-center gap-3 flex-1 mr-4">
-                  {/* Checkbox baseado em 'completed' (inglês do banco) */}
                   <input
                     type="checkbox"
                     className="w-4 h-4 rounded text-indigo-600 bg-slate-950 border-slate-700 focus:ring-indigo-500 focus:ring-offset-slate-900 cursor-pointer"
-                    checked={tarefa.completed}
+                    checked={tarefa.completed || false}
                     onChange={() => alternarConclusao(tarefa.id, tarefa.title, tarefa.completed)}
                   />
 
@@ -180,7 +158,6 @@ export default function TaskFlow() {
                       onKeyDown={(e) => e.key === 'Enter' && salvarEdicao(tarefa.id, tarefa.completed)}
                     />
                   ) : (
-                    // Exibe o texto vindo de 'title' (inglês do banco)
                     <span className={`text-sm transition-all ${tarefa.completed ? 'line-through text-slate-500' : 'text-slate-200'}`}>
                       {tarefa.title}
                     </span>
